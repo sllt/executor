@@ -86,6 +86,13 @@ impl Executor {
         self.poll_tasks();
     }
 
+    pub fn run_until_idle(&mut self) -> ! {
+        loop {
+            self.poll_tasks();
+            self.sleep_if_idle();
+        }
+    }
+
     /// Add task for a future to the list of tasks
     fn add_task<T>(
         &mut self,
@@ -118,6 +125,17 @@ impl Executor {
             }
         }
     }
+
+    fn sleep_if_idle(&self) {
+        use x86_64::instructions::interrupts::{self, enable_interrupts_and_hlt};
+
+        interrupts::disable();
+        if self.tasks.is_empty() {
+            enable_interrupts_and_hlt();
+        } else {
+            interrupts::enable();
+        }
+    }
 }
 
 lazy_static! {
@@ -140,4 +158,12 @@ where
     T: Send + 'static,
 {
     DEFAULT_EXECUTOR.lock().run(Box::new(Box::pin(future)))
+}
+
+pub fn spawn(future: impl Future<Output = ()> + 'static + Send)  {
+    DEFAULT_EXECUTOR.lock().add_task(Box::new(Box::pin(future)));
+}
+
+pub fn run_until_idle() -> ! {
+    DEFAULT_EXECUTOR.lock().run_until_idle()
 }
